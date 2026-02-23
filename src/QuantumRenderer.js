@@ -315,6 +315,8 @@ export class QuantumRenderer {
     this.showConsciousness   = true;
     this.showHeart           = true;
     this.fieldLayout         = 'cubic'; // 'cubic' | 'octahedral'
+    this.showShapeWireframe  = false;
+    this._shapeWireframe     = null;
 
     this._buildFieldVolume();
     this._buildParticleLayer();
@@ -683,6 +685,11 @@ export class QuantumRenderer {
       this._consciousnessPoints.material.uniforms.uTime.value = t;
     }
 
+    // --- Shape wireframe ---
+    if (this._shapeWireframe) {
+      this._shapeWireframe.visible = this.showShapeWireframe;
+    }
+
     // --- Layer 6: Heart Attractor Glow ---
     this._heartPoints.visible = this.showHeart;
     if (this.showHeart) {
@@ -700,6 +707,32 @@ export class QuantumRenderer {
       this._heartPoints.material.uniforms.uTime.value     = t;
       this._heartPoints.material.uniforms.uStrength.value = hs;
     }
+  }
+
+  // Install or replace the STL shape wireframe.
+  // worldVerts: Float32Array (flat [ax,ay,az, bx,...]), triCount: triangle count.
+  setShapeGeometry(worldVerts, triCount) {
+    if (this._shapeWireframe) {
+      this.scene.remove(this._shapeWireframe);
+      this._shapeWireframe.geometry.dispose();
+      this._shapeWireframe = null;
+    }
+    if (!worldVerts || triCount === 0) return;
+
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(worldVerts.slice(), 3));
+    const edges = new THREE.EdgesGeometry(geo);
+    geo.dispose(); // only need edges
+    const mat = new THREE.LineBasicMaterial({
+      color: 0x88ccff,
+      transparent: true,
+      opacity: 0.15,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    this._shapeWireframe = new THREE.LineSegments(edges, mat);
+    this._shapeWireframe.visible = this.showShapeWireframe;
+    this.scene.add(this._shapeWireframe);
   }
 
   // Billboard flash meshes toward camera

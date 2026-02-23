@@ -30,6 +30,9 @@ export class QuantumField {
     this._heartSurfaceCells   = null;                 // Int32Array of near-surface indices
     this._heartInteriorCells  = null;                 // Int32Array of interior indices
 
+    // Shape constraint — Float32Array [0..1] mask; null means no constraint
+    this.shapeMask = null;
+
     // Temp acceleration buffers (reused each step)
     this._higgsAcc    = new Float32Array(N3);
     this._electronAcc = new Float32Array(N3);
@@ -264,6 +267,24 @@ export class QuantumField {
       this.higgs[i]    = Math.max(-5, Math.min(5, this.higgs[i]));
       this.electron[i] = Math.max(-5, Math.min(5, this.electron[i]));
       this.photon[i]   = Math.max(-5, Math.min(5, this.photon[i]));
+    }
+
+    // Shape constraint: damp fields toward vacuum outside the STL shape.
+    // mask=1 → fully inside (no effect); mask=0 → fully outside (strong damp).
+    if (this.shapeMask) {
+      const mask = this.shapeMask;
+      for (let i = 0; i < N3; i++) {
+        const m = mask[i];
+        if (m >= 1.0) continue; // inside — skip
+        const k = Math.max(0, 1.0 - (1.0 - m) * 4.0 * dt);
+        this.electron[i]    *= k;
+        this.electronVel[i] *= k;
+        this.photon[i]      *= k;
+        this.photonVel[i]   *= k;
+        // Higgs relaxes toward VEV rather than collapsing to 0
+        this.higgs[i]    = this.higgs[i]    * k + VEV * (1.0 - k);
+        this.higgsVel[i] *= k;
+      }
     }
   }
 

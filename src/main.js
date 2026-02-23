@@ -12,6 +12,7 @@ import { QuantumField }    from './QuantumField.js';
 import { ParticleSystem }  from './ParticleSystem.js';
 import { Consciousness }   from './Consciousness.js';
 import { QuantumRenderer } from './QuantumRenderer.js';
+import { ShapeConstraint } from './ShapeConstraint.js';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 const SIM_DT    = 0.004;   // 250 Hz internal
@@ -61,6 +62,12 @@ particles.field   = field;
 const consciousness = new Consciousness(field);
 const qRenderer   = new QuantumRenderer(scene, field, particles);
 
+// Shape constraint — loaded from STL file via GUI
+const shapeConstraint = new ShapeConstraint();
+shapeConstraint._onGeometryChange = (worldVerts, triCount) => {
+  qRenderer.setShapeGeometry(worldVerts, triCount);
+};
+
 // ─── GUI State ───────────────────────────────────────────────────────────────
 const guiState = {
   // Simulation
@@ -93,6 +100,12 @@ const guiState = {
   showEntanglement:    true,
   showFlashes:         true,
   showConsciousness:   true,
+
+  // Shape constraint
+  shapeEnabled:      false,
+  shapeFuzziness:    1.0,
+  shapeScale:        1.0,
+  shapeShowWireframe: false,
 
   // Camera
   autoRotate:     false,
@@ -151,6 +164,38 @@ heartF.add(guiState, 'heartStrength', 0.0, 1.0, 0.01).name('Probability / Streng
       .onChange(v => { field.heartStrength = v; });
 heartF.add(guiState, 'showHeart').name('Show Heart Glow')
       .onChange(v => { qRenderer.showHeart = v; });
+
+// Shape Constraint folder
+const shapeF = gui.addFolder('Shape Constraint');
+shapeF.add({ loadSTL: () => document.getElementById('stl-input').click() }, 'loadSTL')
+      .name('Load STL…');
+shapeF.add(guiState, 'shapeEnabled').name('Enabled')
+      .onChange(v => {
+        shapeConstraint.enabled = v;
+        field.shapeMask = (v && shapeConstraint._rawVerts) ? shapeConstraint.fuzzMask : null;
+      });
+shapeF.add(guiState, 'shapeFuzziness', 0.0, 6.0, 0.1).name('Fuzziness (world units)')
+      .onChange(v => { shapeConstraint.setFuzziness(v); });
+shapeF.add(guiState, 'shapeScale', 0.1, 3.0, 0.05).name('Scale')
+      .onChange(v => { shapeConstraint.setScale(v); });
+shapeF.add(guiState, 'shapeShowWireframe').name('Show Wireframe')
+      .onChange(v => { qRenderer.showShapeWireframe = v; });
+shapeF.close();
+
+// STL file input handler
+document.getElementById('stl-input').addEventListener('change', (ev) => {
+  const file = ev.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    shapeConstraint.loadSTL(e.target.result);
+    if (shapeConstraint.enabled) {
+      field.shapeMask = shapeConstraint.fuzzMask;
+    }
+  };
+  reader.readAsArrayBuffer(file);
+  ev.target.value = ''; // allow re-loading the same file
+});
 
 // Rendering folder
 const renderF = gui.addFolder('Rendering');
