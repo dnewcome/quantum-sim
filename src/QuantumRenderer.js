@@ -314,6 +314,7 @@ export class QuantumRenderer {
     this.showFlashes         = true;
     this.showConsciousness   = true;
     this.showHeart           = true;
+    this.fieldLayout         = 'cubic'; // 'cubic' | 'octahedral'
 
     this._buildFieldVolume();
     this._buildParticleLayer();
@@ -327,17 +328,35 @@ export class QuantumRenderer {
   _buildFieldVolume() {
     const geo = new THREE.BufferGeometry();
 
-    // Static positions (built once)
-    const positions = new Float32Array(N3 * 3);
+    // Precompute both cubic and octahedral position arrays; working buffer starts cubic.
+    // Octahedral: odd y-layers shift +½ cell in x and z so each point sits above the
+    // midpoint of four lower-layer neighbours — the vertex of a virtual upward triangle.
     const scale = (2 * WORLD_RANGE) / N;
+    this._cubicPositions = new Float32Array(N3 * 3);
+    this._octaPositions  = new Float32Array(N3 * 3);
+
     for (let x = 0; x < N; x++)
     for (let y = 0; y < N; y++)
     for (let z = 0; z < N; z++) {
-      const i = x + y * N + z * N2;
-      positions[i*3 + 0] = (x - N/2 + 0.5) * scale;
-      positions[i*3 + 1] = (y - N/2 + 0.5) * scale;
-      positions[i*3 + 2] = (z - N/2 + 0.5) * scale;
+      const i  = x + y * N + z * N2;
+      const cx = (x - N/2 + 0.5) * scale;
+      const cy = (y - N/2 + 0.5) * scale;
+      const cz = (z - N/2 + 0.5) * scale;
+
+      this._cubicPositions[i*3]     = cx;
+      this._cubicPositions[i*3 + 1] = cy;
+      this._cubicPositions[i*3 + 2] = cz;
+
+      // Odd y-layers offset by half a cell in x and z → triangular / FCC close-packing
+      const off = (y % 2 === 1) ? 0.5 * scale : 0.0;
+      this._octaPositions[i*3]     = cx + off;
+      this._octaPositions[i*3 + 1] = cy;
+      this._octaPositions[i*3 + 2] = cz + off;
     }
+
+    // Mutable working buffer (lerped between the two layouts on the GPU each frame)
+    const positions = new Float32Array(this._cubicPositions);
+    this._fieldLerpT = 0.0;
     geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
 
     // Dynamic field attribute buffers
@@ -559,6 +578,24 @@ export class QuantumRenderer {
       geo.getAttribute('aPhi').needsUpdate      = true;
       geo.getAttribute('aOrch').needsUpdate     = true;
       this._fieldPoints.material.uniforms.uTime.value = t;
+    }
+
+    // Animate lattice layout transition (cubic ↔ octahedral)
+    {
+      const targetT = (this.fieldLayout === 'octahedral') ? 1.0 : 0.0;
+      if (this._fieldLerpT !== targetT) {
+        const delta = 0.045; // ~22 frames at 60fps ≈ 0.37 s transition
+        this._fieldLerpT = targetT > this._fieldLerpT
+          ? Math.min(targetT, this._fieldLerpT + delta)
+          : Math.max(targetT, this._fieldLerpT - delta);
+
+        const posAttr = this._fieldPoints.geometry.getAttribute('position');
+        const arr = posAttr.array;
+        const c = this._cubicPositions, o = this._octaPositions;
+        const lt = this._fieldLerpT;
+        for (let k = 0; k < N3 * 3; k++) arr[k] = c[k] + (o[k] - c[k]) * lt;
+        posAttr.needsUpdate = true;
+      }
     }
 
     // --- Layer 2: Particles ---

@@ -87,6 +87,7 @@ const guiState = {
   bloomStrength:  1.8,
   bloomRadius:    0.6,
   bloomThreshold: 0.1,
+  fieldLayout:         'cubic',
   showField:           true,
   showParticles:       true,
   showEntanglement:    true,
@@ -153,6 +154,8 @@ heartF.add(guiState, 'showHeart').name('Show Heart Glow')
 
 // Rendering folder
 const renderF = gui.addFolder('Rendering');
+renderF.add(guiState, 'fieldLayout', ['cubic', 'octahedral']).name('Field Layout')
+       .onChange(v => { qRenderer.fieldLayout = v; });
 renderF.add(guiState, 'bloomStrength', 0.0, 5.0, 0.1).name('Bloom Strength')
        .onChange(v => { bloomPass.strength = v; });
 renderF.add(guiState, 'bloomRadius',    0.0, 1.5, 0.05).name('Bloom Radius')
